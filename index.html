@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fish Bird Game</title>
+  <style>
+    :root {
+      --bg-top: #7dd3fc;
+      --bg-bottom: #dbeafe;
+      --sea: #0ea5e9;
+      --sea-dark: #0369a1;
+      --water: #38bdf8;
+      --pipe: #16a34a;
+      --pipe-dark: #166534;
+      --fish: #f97316;
+      --fish-dark: #c2410c;
+      --bird: #f43f5e;
+      --bird-dark: #be123c;
+      --text: #0f172a;
+      --panel: rgba(15, 23, 42, 0.18);
+      --shadow: rgba(15, 23, 42, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+    }
+
+    .game-shell {
+      position: relative;
+      width: min(92vw, 480px);
+      height: min(92vh, 760px);
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px var(--shadow);
+      background: linear-gradient(180deg, #7dd3fc 0%, #dbeafe 100%);
+      border: 4px solid rgba(255,255,255,0.65);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #7dd3fc 0%, #dbeafe 100%);
+      cursor: pointer;
+    }
+
+    .hud {
+      position: absolute;
+      top: 18px;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 18px;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .badge {
+      background: var(--panel);
+      border: 2px solid rgba(255,255,255,0.5);
+      backdrop-filter: blur(2px);
+      color: white;
+      font-weight: 800;
+      padding: 8px 12px;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-size: 12px;
+      min-width: 88px;
+      text-align: center;
+    }
+
+    .start-overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.18);
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .start-overlay.hidden {
+      opacity: 0;
+    }
+
+    .panel {
+      text-align: center;
+      background: rgba(255,255,255,0.28);
+      border: 3px solid rgba(255,255,255,0.6);
+      border-radius: 22px;
+      padding: 22px 26px;
+      backdrop-filter: blur(2px);
+      box-shadow: 0 20px 36px rgba(15, 23, 42, 0.16);
+      pointer-events: none;
+    }
+
+    .title {
+      margin: 0 0 12px;
+      font-size: clamp(28px, 6vw, 44px);
+      color: #ffffff;
+      text-shadow: 0 4px 14px rgba(15, 23, 42, 0.22);
+      letter-spacing: 0.04em;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: #e2e8f0;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .game-over {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-items: center;
+      z-index: 11;
+      background: rgba(15, 23, 42, 0.2);
+    }
+
+    .game-over.show {
+      display: grid;
+    }
+
+    .final-score {
+      font-size: clamp(24px, 5vw, 44px);
+      font-weight: 900;
+      color: white;
+      margin: 8px 0 0;
+      text-shadow: 0 8px 18px rgba(15,23,42,0.2);
+    }
+
+    .final-label {
+      color: #e2e8f0;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="game-shell">
+    <div class="hud">
+      <div id="scoreBadge" class="badge">Score: 0</div>
+      <div id="bestBadge" class="badge">Best: 0</div>
+    </div>
+
+    <canvas id="gameCanvas" width="480" height="760"></canvas>
+
+    <div id="startOverlay" class="start-overlay">
+      <div class="panel">
+        <h1 class="title">Fish Bird</h1>
+        <p class="subtitle">Tap / Click / Space to swim</p>
+      </div>
+    </div>
+
+    <div id="gameOverOverlay" class="game-over">
+      <div class="panel">
+        <div class="final-label">Game Over</div>
+        <div id="finalScore" class="final-score">0</div>
+        <div class="subtitle" style="margin-top: 12px;">Tap / Click / Space to retry</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const scoreBadge = document.getElementById("scoreBadge");
+    const bestBadge = document.getElementById("bestBadge");
+    const startOverlay = document.getElementById("startOverlay");
+    const gameOverOverlay = document.getElementById("gameOverOverlay");
+    const finalScore = document.getElementById("finalScore");
+
+    const GAME = {
+      width: canvas.width,
+      height: canvas.height,
+      started: false,
+      over: false,
+      score: 0,
+      best: Number(localStorage.getItem("fishBirdBest") || 0),
+      lastTime: 0,
+      pipeTimer: 0,
+      pipeInterval: 1500,
+      difficulty: 1
+    };
+
+    const fish = {
+      x: 130,
+      y: canvas.height / 2,
+      radius: 22,
+      velocity: 0,
+      gravity: 0.42,
+      lift: -8.7,
+      rotation: 0
+    };
+
+    const world = {
+      scroll: 0,
+      clouds: [],
+      bubbles: []
+    };
+
+    const pipes = [];
+
+    function resetFish() {
+      fish.x = 130;
+      fish.y = canvas.height / 2;
+      fish.velocity = 0;
+      fish.rotation = 0;
+    }
+
+    function resetGame() {
+      GAME.score = 0;
+      GAME.started = false;
+      GAME.over = false;
+      GAME.pipeTimer = 0;
+      pipes.length = 0;
+      world.scroll = 0;
+      resetFish();
+      scoreBadge.textContent = "Score: 0";
+      bestBadge.textContent = "Best: " + GAME.best;
+      startOverlay.classList.remove("hidden");
+      gameOverOverlay.classList.remove("show");
+      finalScore.textContent = "0";
+    }
+
+    function startGame() {
+      if (GAME.over) {
+        resetGame();
+      }
+      GAME.started = true;
+      startOverlay.classList.add("hidden");
+      gameOverOverlay.classList.remove("show");
+      if (!GAME.over) {
+        fish.velocity = fish.lift * 0.8;
+      }
+    }
+
+    function makeClouds() {
+      world.clouds = [];
+      for (let i = 0; i < 7; i++) {
+        world.clouds.push({
+          x: Math.random() * canvas.width,
+          y: 40 + Math.random() * 240,
+          r: 20 + Math.random() * 35,
+          speed: 0.18 + Math.random() * 0.45
+        });
+      }
+    }
+
+    function makeBubbles() {
+      world.bubbles = [];
+      for (let i = 0; i < 20; i++) {
+        world.bubbles.push({
+          x: Math.random() * canvas.width,
+          y: 450 + Math.random() * 280,
+          r: 2 + Math.random() * 8,
+          speed: 0.5 + Math.random() * 1.2
+        });
+      }
+    }
+
+    function addPipe() {
+      const gapHeight = 155 + Math.random() * 46;
+      const gapTop = 90 + Math.random() * (canvas.height - 240 - gapHeight);
+      const gapBottom = gapTop + gapHeight;
+      const width = 72;
+
+      pipes.push({
+        x: canvas.width + 50,
+        width,
+        gapTop,
+        gapBottom,
+        scored: false
+      });
+    }
+
+    function handleInput() {
+      if (!GAME.started) {
+        startGame();
+        return;
+      }
+
+      if (GAME.over) {
+        resetGame();
+        startGame();
+        return;
+      }
+
+      fish.velocity = fish.lift;
+    }
+
+    document.addEventListener("pointerdown", handleInput);
+    document.addEventListener("keydown", (event) => {
+      if (event.code === "Space" || event.code === "ArrowUp") {
+        event.preventDefault();
+        handleInput();
+      }
+    });
+
+    function update(dt) {
+      if (!GAME.started || GAME.over) return;
+
+      fish.velocity += fish.gravity;
+      fish.y += fish.velocity;
+      fish.rotation = Math.max(-1.1, Math.min(1.4, fish.velocity / 10));
+
+      const speed = 2.6 + GAME.score * 0.06;
+      world.scroll += speed * dt * 0.06;
+
+      for (const cloud of world.clouds) {
+        cloud.x -= cloud.speed * dt * 0.06;
+        if (cloud.x < -100) {
+          cloud.x = canvas.width + 50;
+          cloud.y = 30 + Math.random() * 200;
+        }
+      }
+
+      for (const bubble of world.bubbles) {
+        bubble.y -= bubble.speed * dt * 0.06;
+        bubble.x += Math.sin((bubble.y + world.scroll) * 0.05) * 0.5;
+        if (bubble.y < -20) {
+          bubble.y = canvas.height + Math.random() * 50;
+          bubble.x = Math.random() * canvas.width;
+        }
+      }
+
+      GAME.pipeTimer += dt;
+      if (GAME.pipeTimer >= GAME.pipeInterval) {
+        GAME.pipeTimer = 0;
+        addPipe();
+      }
+
+      for (let i = pipes.length - 1; i >= 0; i--) {
+        const pipe = pipes[i];
+        pipe.x -= speed * dt * 0.06;
+
+        if (!pipe.scored && pipe.x + pipe.width < fish.x) {
+          pipe.scored = true;
+          GAME.score += 1;
+          scoreBadge.textContent = "Score: " + GAME.score;
+          if (GAME.score > GAME.best) {
+            GAME.best = GAME.score;
+            localStorage.setItem("fishBirdBest", String(GAME.best));
+            bestBadge.textContent = "Best: " + GAME.best;
+          }
+        }
+
+        if (pipe.x + pipe.width < -40) {
+          pipes.splice(i, 1);
+        }
+      }
+
+      if (fish.y - fish.radius < 0 || fish.y + fish.radius > canvas.height) {
+        endGame();
+      }
+
+      for (const pipe of pipes) {
+        const hitX = fish.x + fish.radius > pipe.x && fish.x - fish.radius < pipe.x + pipe.width;
+        const hitTop = fish.y - fish.radius < pipe.gapTop;
+        const hitBottom = fish.y + fish.radius > pipe.gapBottom;
+
+        if (hitX && (hitTop || hitBottom)) {
+          endGame();
+        }
+      }
+    }
+
+    function endGame() {
+      GAME.over = true;
+      GAME.started = false;
+      finalScore.textContent = String(GAME.score);
+      if (GAME.score > GAME.best) {
+        GAME.best = GAME.score;
+        localStorage.setItem("fishBirdBest", String(GAME.best));
+      }
+      bestBadge.textContent = "Best: " + GAME.best;
+      gameOverOverlay.classList.add("show");
+    }
+
+    function drawBackground() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      sky.addColorStop(0, "#7dd3fc");
+      sky.addColorStop(1, "#dbeafe");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      for (const cloud of world.clouds) {
+        ctx.beginPath();
+        ctx.arc(cloud.x, cloud.y, cloud.r, 0, Math.PI * 2);
+        ctx.arc(cloud.x + cloud.r * 1.2, cloud.y + 4, cloud.r * 0.9, 0, Math.PI * 2);
+        ctx.arc(cloud.x - cloud.r * 1.2, cloud.y + 5, cloud.r * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const waterY = canvas.height - 130;
+      ctx.fillStyle = "#38bdf8";
+      ctx.fillRect(0, waterY, canvas.width, canvas.height - waterY);
+
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      for (let i = -1; i < canvas.width / 40 + 2; i++) {
+        const x = (i * 40) - (world.scroll % 40);
+        ctx.fillRect(x, waterY + 18, 18, 2);
+      }
+
+      for (const bubble of world.bubbles) {
+        ctx.fillStyle = "rgba(255,255,255,0.45)";
+        ctx.beginPath();
+        ctx.arc(bubble.x, bubble.y, bubble.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawPipe(pipe) {
+      const topH = pipe.gapTop;
+      const bottomY = pipe.gapBottom;
+      const bottomH = canvas.height - bottomY;
+
+      ctx.fillStyle = "#16a34a";
+      ctx.fillRect(pipe.x, 0, pipe.width, topH);
+      ctx.fillRect(pipe.x, bottomY, pipe.width, bottomH);
+
+      ctx.fillStyle = "#166534";
+      ctx.fillRect(pipe.x - 4, topH - 14, pipe.width + 8, 14);
+      ctx.fillRect(pipe.x - 4, bottomY, pipe.width + 8, 14);
+
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.fillRect(pipe.x + 10, 0, 8, topH);
+      ctx.fillRect(pipe.x + 10, bottomY, 8, bottomH);
+
+      ctx.fillStyle = "#22c55e";
+      ctx.fillRect(pipe.x + pipe.width - 12, topH, 12, 12);
+      ctx.fillRect(pipe.x + pipe.width - 12, bottomY, 12, 12);
+    }
+
+    function drawFish() {
+      ctx.save();
+      ctx.translate(fish.x, fish.y);
+      ctx.rotate(fish.rotation);
+
+      ctx.fillStyle = "#f97316";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 26, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#fb923c";
+      ctx.beginPath();
+      ctx.moveTo(18, 0);
+      ctx.lineTo(35, -8);
+      ctx.lineTo(35, 8);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#f8fafc";
+      ctx.beginPath();
+      ctx.arc(-5, -6, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath();
+      ctx.arc(-4, -6, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#fbbf24";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-8, 10);
+      ctx.lineTo(-2, 12);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#f97316";
+      ctx.beginPath();
+      ctx.moveTo(-12, -8);
+      ctx.quadraticCurveTo(-26, -18, -24, -6);
+      ctx.quadraticCurveTo(-18, 0, -10, -6);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-12, 8);
+      ctx.quadraticCurveTo(-26, 18, -24, 6);
+      ctx.quadraticCurveTo(-18, 0, -10, 6);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawBird(birdX, birdY, scale = 1) {
+      ctx.save();
+      ctx.translate(birdX, birdY);
+      ctx.scale(scale, scale);
+
+      ctx.fillStyle = "#f43f5e";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 18, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#fb7185";
+      ctx.beginPath();
+      ctx.moveTo(12, -2);
+      ctx.lineTo(26, 0);
+      ctx.lineTo(12, 8);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#f8fafc";
+      ctx.beginPath();
+      ctx.arc(-4, -4, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath();
+      ctx.arc(-4, -4, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#facc15";
+      ctx.beginPath();
+      ctx.moveTo(-6, 7);
+      ctx.lineTo(-2, 13);
+      ctx.lineTo(2, 7);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#f43f5e";
+      ctx.beginPath();
+      ctx.moveTo(-16, -2);
+      ctx.lineTo(-26, -10);
+      ctx.lineTo(-20, 2);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawFreeBirds() {
+      const birdConfigs = [
+        { x: 70, y: 120, scale: 0.9 },
+        { x: 260, y: 230, scale: 1.1 },
+        { x: 385, y: 150, scale: 0.85 }
+      ];
+
+      for (const bird of birdConfigs) {
+        const flyOffset = (Math.sin((performance.now() * 0.003) + bird.x) * 12);
+        drawBird(bird.x, bird.y + flyOffset, bird.scale);
+      }
+    }
+
+    function draw() {
+      drawBackground();
+      drawFreeBirds();
+
+      for (const pipe of pipes) {
+        drawPipe(pipe);
+      }
+
+      drawFish();
+
+      if (!GAME.started && !GAME.over) {
+        ctx.fillStyle = "rgba(255,255,255,0.15)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    function loop(timestamp) {
+      const dt = Math.min(32, timestamp - GAME.lastTime || 16);
+      GAME.lastTime = timestamp;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    makeClouds();
+    makeBubbles();
+    resetGame();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
